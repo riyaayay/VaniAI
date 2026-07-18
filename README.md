@@ -65,7 +65,3 @@ curl -X POST "https://your-space.hf.space/api/voice-detection" \
 - Hindi
 - Malayalam
 - Telugu
-
-## Notes
-
-The publicly deployed Hugging Face Space may not currently reflect the 2.67% EER benchmark achieved during original development and evaluation (model performance has degraded post-deployment). The codebase and documented methodology in this repository remain accurate and reproducible.
