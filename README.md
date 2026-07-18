@@ -1,5 +1,5 @@
 ---
-title: IndicGuard Voice Detection
+title: VaniAI Voice Detection
 emoji: 🎤
 colorFrom: blue
 colorTo: purple
@@ -9,7 +9,7 @@ app_file: app.py
 pinned: false
 ---
 
-# IndicGuard AI Voice Detection API
+# VaniAI AI Voice Detection API
 
 Multi-language AI vs Human voice detection for Tamil, English, Hindi, Malayalam, and Telugu.
 
