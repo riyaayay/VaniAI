@@ -1,0 +1,220 @@
+# ============================================
+# HACKATHON EMERGENCY - 90 MINUTE BLITZ
+# Target: Train EER 14.6% -> <6% 
+# Current: Test EER 2.67% (EXCELLENT!)
+# Strategy: Fix underfitting while preserving generalization
+# ============================================
+
+project:
+  name: "IndicGuard_Hackathon_Final"
+  seed: 42
+  base_dir: "/home/council/voice_detection"
+
+datasets:
+  base_path: "/home/council/voice_detection/data/raw"
+  train:
+    human_paths:
+      hindi: "train/Human/hindi"
+      telugu: "train/Human/telugu"
+      malayalam: "train/Human/malayalam"
+      tamil: "train/Human/tamil"
+      english: "train/Human/english"
+    ai_paths:
+      hindi: "train/AI/hindi"
+      telugu: "train/AI/telugu"
+      malayalam: "train/AI/malayalam"
+      tamil: "train/AI/tamil"
+      english: "train/AI/english"
+  
+  eval:
+    human_paths:
+      hindi: "eval/Human/hindi"
+      telugu: "eval/Human/telugu/"
+      malayalam: "eval/Human/malayalam"
+      tamil: "eval/Human/tamil"
+      english: "eval/Human/english"
+    ai_paths:
+      hindi: "eval/AI/hindi"
+      telugu: "eval/AI/telugu"
+      malayalam: "eval/AI/malayalam"
+      tamil: "eval/AI/tamil"
+      english: "eval/AI/english"
+  
+  test:
+    human_paths:
+      hindi: "test/Human/hindi"
+      telugu: "test/Human/telugu"
+      malayalam: "test/Human/malayalam"
+      tamil: "test/Human/tamil"
+      english: "test/Human/english"
+    ai_paths:
+      hindi: "test/AI/hindi"
+      telugu: "test/AI/telugu"
+      malayalam: "test/AI/malayalam"
+      tamil: "test/AI/tamil"
+      english: "test/AI/english"
+
+audio:
+  sample_rate: 16000
+  max_length_samples: 48000
+  n_fft: 512
+  hop_length: 512
+  n_mels: 80
+  mp3_bitrates: [64, 128]
+
+model:
+  spectral_encoder:
+    output_dim: 512
+
+  sincnet:
+    num_filters: 80
+    kernel_size: 251
+    stride: 64
+    min_low_hz: 50
+    min_band_hz: 50
+    sample_rate: 16000
+    output_dim: 256
+  
+  bimamba:
+    input_dim: 768
+    hidden_dim: 512
+    num_layers: 6
+    state_dim: 64
+    conv_dim: 4
+    expand_factor: 2
+    dropout: 0.15           # REDUCED: 0.2 -> 0.15 (less regularization for training)
+    stochastic_depth_prob: 0.05  # REDUCED: 0.1 -> 0.05
+  
+  liquid:
+    input_dim: 512
+    hidden_dim: 256
+    tau_min: 0.1
+    tau_max: 10.0
+    dt: 0.01
+    num_steps: 2
+    dropout: 0.1            # REDUCED: 0.2 -> 0.1
+  
+  kan:
+    input_dim: 256
+    hidden_dim: 128
+    output_dim: 2
+    grid_size: 7
+    spline_order: 3
+    dropout: 0.1            # REDUCED: 0.2 -> 0.1
+
+training:
+  batch_size: 48           # INCREASED: 32 -> 48 (better gradient estimates)
+  epochs: 25               # REDUCED: 70 -> 35 (90min window)
+  accumulate_grad_batches: 1
+  
+  label_smoothing: 0.05    # REDUCED: 0.1 -> 0.05 (let model be more confident)
+  gradient_clip: 1.0       # INCREASED: 0.5 -> 1.0 (allow bigger updates)
+  warmup_epochs: 2         # REDUCED: 5 -> 2 (faster ramp-up)
+  
+  max_grad_norm: 1.0       # INCREASED: 0.5 -> 1.0
+  
+  early_stopping:
+    enabled: true
+    patience: 8            # REDUCED: 15 -> 8 (faster decisions)
+    min_delta: 0.001
+    monitor: "train_eer"   # CRITICAL: Monitor TRAIN not VAL!
+  
+  mixup:
+    enabled: true          # ENABLED! Helps with training fit
+    alpha: 0.3             # Moderate mixup
+    prob: 0.3              # 30% of batches
+  
+  dropout_rate: 0.1        # REDUCED: 0.2 -> 0.1
+  batch_norm_momentum: 0.1
+  batch_norm_eps: 1.0e-5
+  
+  optimizer:
+    type: "AdamW"
+    learning_rate: 0.0003  # INCREASED: 0.00001 -> 0.0003 (30x higher!)
+    weight_decay: 0.005    # REDUCED: 0.01 -> 0.005 (less weight penalty)
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+    amsgrad: true
+  
+  scheduler:
+    type: "OneCycleLR"     # CHANGED: Fast convergence scheduler
+    max_lr: 0.0003
+    pct_start: 0.15        # Quick warmup (15% of training)
+    div_factor: 10.0       # Start at max_lr/10
+    final_div_factor: 100.0 # End at max_lr/100
+    anneal_strategy: "cos"
+  
+  # AGGRESSIVE AUGMENTATION (Help training fit)
+  augmentation:
+    codec_simulation:
+      enabled: true
+      prob: 0.7            # INCREASED: 0.5 -> 0.7
+    
+    noise_injection:
+      enabled: true
+      snr_db_range: [10, 35]  # WIDER: [15,30] -> [10,35]
+      prob: 0.4               # INCREASED: 0.2 -> 0.4
+    
+    time_stretch:
+      enabled: true        # ENABLED!
+      rate_range: [0.9, 1.1]
+      prob: 0.3
+    
+    pitch_shift:
+      enabled: true        # ENABLED!
+      semitone_range: [-2, 2]
+      prob: 0.3
+    
+    freq_mask:
+      enabled: true
+      num_masks: 2         # INCREASED: 1 -> 2
+      freq_mask_param: 12  # INCREASED: 8 -> 12
+      prob: 0.4            # INCREASED: 0.2 -> 0.4
+    
+    time_mask:
+      enabled: true
+      num_masks: 2         # INCREASED: 1 -> 2
+      time_mask_param: 20  # INCREASED: 12 -> 20
+      prob: 0.4            # INCREASED: 0.2 -> 0.4
+    
+    random_gain:
+      enabled: true
+      min_gain_db: -4      # INCREASED: -2 -> -4
+      max_gain_db: 4       # INCREASED: 2 -> 4
+      prob: 0.3            # INCREASED: 0.15 -> 0.3
+
+hardware:
+  device: "cuda"
+  num_workers: 4        # INCREASED: 12 -> 16 (max out data loading)
+  pin_memory: true
+  persistent_workers: true 
+  prefetch_factor: 4       # REDUCED: 8 -> 4 (less memory, more stable)
+  use_amp: true            # ENABLED! Mixed precision for speed
+  amp_dtype: "bfloat16"    # CHANGED: float32 -> bfloat16 (RTX 50-series optimal)
+  gradient_checkpointing: false
+  empty_cache_freq: 50     # REDUCED: 100 -> 50 (more frequent cleanup)
+  
+  detect_anomaly: true   # DISABLED: Too slow for hackathon
+
+paths:
+  checkpoints: "./checkpoints_stable"
+  logs: "./logs_stable"
+  cache: "./cache"
+
+logging:
+  log_dir: "./logs_stable"
+  experiment_name: "indicguard_stable_final"
+  log_every_n_steps: 5     # REDUCED: 10 -> 5 (more frequent updates)
+  log_grad_norms: true
+
+evaluation:
+  eer_threshold: 0.06
+  monitor_overfitting: true
+  overfitting_threshold: 0.05  # INCREASED: 0.03 -> 0.05 (more lenient)
+  save_best_eer: true
+  save_best_auc: true
+  save_last: true
+  val_every_n_epochs: 1    # REDUCED: 2 -> 1 (check every epoch)
+  test_at_end: true
+  test_best_checkpoint: true
+  check_nan: true
